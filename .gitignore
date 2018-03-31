@@ -1,0 +1,5 @@
+*
+!.gitignore
+!magic.ino
+!MPU6050_DMP6*
+!ShowPoints*
