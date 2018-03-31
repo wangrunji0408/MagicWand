@@ -175,7 +175,7 @@ void draw0() {
 int LENGTH = 18;
 byte[] buf = new byte[18];
 
-void serialEvent0(Serial port) {
+void serialEvent(Serial port) {
     interval = millis();
     while (port.available() > 0) {
         int ch = port.read();
@@ -213,7 +213,7 @@ void serialEvent0(Serial port) {
     }
 }
 
-void serialEvent(Serial port) {
+void serialEvent0(Serial port) {
     interval = millis();
     while (port.available() > 0) {
         int ch = port.read();

@@ -214,8 +214,8 @@ class Gyro
 		mpu.setXGyroOffset(GYRO_OFFSET[0]);
 		mpu.setYGyroOffset(GYRO_OFFSET[1]);
 		mpu.setZGyroOffset(GYRO_OFFSET[2]);
-		mpu.setXAccelOffset(ACCEL_OFFSET[0]);
-		mpu.setYAccelOffset(ACCEL_OFFSET[1]);
+		// mpu.setXAccelOffset(ACCEL_OFFSET[0]); // don't!!
+		// mpu.setYAccelOffset(ACCEL_OFFSET[1]); // don't!!
 		mpu.setZAccelOffset(ACCEL_OFFSET[2]);
 
 		// make sure it worked (returns 0 if so)
@@ -302,12 +302,12 @@ class Gyro
 			fifoCount -= packetSize;
 			
 			// mpu.dmpGetGyro(&gyro, fifoBuffer);
-			// mpu.dmpGetQuaternion(&q, fifoBuffer);
+			mpu.dmpGetQuaternion(&q, fifoBuffer);
 			// mpu.dmpGetEuler(euler, &q);
 			// mpu.dmpGetAccel(&aa, fifoBuffer);
-			// mpu.dmpGetGravity(&gravity, &q);
+			mpu.dmpGetGravity(&gravity, &q);
 			// mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
-			// dmpGetYawRollPitch(yrp, &q, &gravity);
+			dmpGetYawRollPitch(yrp, &q, &gravity);
 			// mpu.dmpGetLinearAccel(&aaReal, &aa, &gravity);
 			// mpu.dmpGetLinearAccelInWorld(&aaWorld, &aaReal, &q);
 		}
@@ -405,12 +405,12 @@ class GyroMotionRecognizer
 
 struct Device
 {
-	// LEDBar ledBar = LEDBar(2);
-	// LED led = LED(3);
+	LEDBar ledBar = LEDBar(2);
+	LED led = LED(3);
 	LED status_led = LED(13);
-	// Button playButton = Button(8);
-	// Button pauseButton = Button(9);
-	// MP3Player mp3Player = MP3Player(A4);
+	Button playButton = Button(8);
+	Button pauseButton = Button(9);
+	MP3Player mp3Player = MP3Player(A4);
 	Gyro gyro = Gyro();	// must 5V
 	#define bluetoothSerial Serial1
 
@@ -436,32 +436,21 @@ inline int f2i(float x)
 class Controller
 {
 	Device* device;
-	// GyroMotionRecognizer motion;
+	GyroMotionRecognizer motion;
 	Counter counter;
   public:
-	Controller(Device* device) : device(device), /*motion(&device->gyro),*/ counter(1) {}
+	Controller(Device* device) : device(device), motion(&device->gyro), counter(1) {}
 	void loop()
 	{
-		// motion.loop();
+		motion.loop();
 		if(counter.next())
 		{
-			// uint8_t buf[512];
-			// buf[0] = '$';
-			// memcpy(buf+4, motion.gyro->yrp, sizeof(float) * 3);
-			// buf[16] = '\r';
-			// buf[17] = '\n';
-			// Serial.write(buf, 18);
-
-			uint8_t buf[14] = { '$', 0x02, 0,0, 0,0, 0,0, 0,0, 0x00, 0x00, '\r', '\n' };
-			buf[2] = device->gyro.fifoBuffer[0];
-            buf[3] = device->gyro.fifoBuffer[1];
-            buf[4] = device->gyro.fifoBuffer[4];
-            buf[5] = device->gyro.fifoBuffer[5];
-            buf[6] = device->gyro.fifoBuffer[8];
-            buf[7] = device->gyro.fifoBuffer[9];
-            buf[8] = device->gyro.fifoBuffer[12];
-            buf[9] = device->gyro.fifoBuffer[13];
-            Serial.write(buf, 14);
+			uint8_t buf[512];
+			buf[0] = '$';
+			memcpy(buf+4, motion.gyro->yrp, sizeof(float) * 3);
+			buf[16] = '\r';
+			buf[17] = '\n';
+			Serial.write(buf, 18);
 
 			// char str[512];
 			// sprintf(str, "%d, %d, %d", f2i(motion.gyro->yrp[0]), f2i(motion.gyro->yrp[1]), f2i(motion.gyro->yrp[2]));			
@@ -516,13 +505,13 @@ Controller* ctrl;
 
 void setup()
 {
-  device = new Device();
-  ctrl = new Controller(device);
+	device = new Device();
+	ctrl = new Controller(device);
 }
 
 void loop()
 {
-  device->loop();
-  ctrl->loop();
-  delay(1);
+	device->loop();
+	ctrl->loop();
+	delay(1);
 }
