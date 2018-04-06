@@ -64,13 +64,17 @@ void setupSerial() {
     println(Serial.list());
 
     // get the first available port (use EITHER this OR the specific port code below)
-    String portName = Serial.list()[4];
+    //String portName = Serial.list()[4];
     
     // get a specific serial port (use EITHER this OR the first-available code above)
-    //String portName = "/dev/cu.usbmodem33";
+    // String portName = "/dev/cu.usbmodem1421";
+    String portName = "/dev/cu.HC-05-DevB";
     
     // open the serial port
     port = new Serial(this, portName, 9600);
+    
+    //Serial bluetooth1 = new Serial(this, "/dev/cu.HC-05-DevB", 9600);
+    //Serial bluetooth2 = new Serial(this, "/dev/cu.HC-05-DevB-1", 9600);
     
     // send single character to trigger DMP init/start
     // (expected by MPU6050_DMP6 example Arduino sketch)
@@ -105,6 +109,7 @@ int z = 0;
 
 void draw() {
     resend();
+    handleSerial();
     
     background(0);
     stroke(255);
@@ -117,206 +122,24 @@ void draw() {
     }
 }
 
-void draw0() {
-    resend();
-    
-    // black background
-    background(0);
-    
-    // translate everything to the middle of the viewport
-    pushMatrix();
-    translate(width / 2, height / 2);
-
-    // 3-step rotation from yaw/pitch/roll angles (gimbal lock!)
-    // ...and other weirdness I haven't figured out yet
-    //rotateY(-ypr[0]);
-    //rotateZ(-ypr[1]);
-    //rotateX(-ypr[2]);
-
-    // toxiclibs direct angle/axis rotation from quaternion (NO gimbal lock!)
-    // (axis order [1, 3, 2] and inversion [-1, +1, +1] is a consequence of
-    // different coordinate system orientation assumptions between Processing
-    // and InvenSense DMP)
-    float[] axis = quat.toAxisAngle();
-    rotate(axis[0], -axis[1], axis[3], axis[2]);
-
-    // draw main body in red
-    fill(255, 0, 0, 200);
-    box(10, 10, 200);
-    
-    // draw front-facing tip in blue
-    fill(0, 0, 255, 200);
-    pushMatrix();
-    translate(0, 0, -120);
-    rotateX(PI/2);
-    drawCylinder(0, 20, 20, 8);
-    popMatrix();
-    
-    // draw wings and tail fin in green
-    fill(0, 255, 0, 200);
-    beginShape(TRIANGLES);
-    vertex(-100,  2, 30); vertex(0,  2, -80); vertex(100,  2, 30);  // wing top layer
-    vertex(-100, -2, 30); vertex(0, -2, -80); vertex(100, -2, 30);  // wing bottom layer
-    vertex(-2, 0, 98); vertex(-2, -30, 98); vertex(-2, 0, 70);  // tail left layer
-    vertex( 2, 0, 98); vertex( 2, -30, 98); vertex( 2, 0, 70);  // tail right layer
-    endShape();
-    beginShape(QUADS);
-    vertex(-100, 2, 30); vertex(-100, -2, 30); vertex(  0, -2, -80); vertex(  0, 2, -80);
-    vertex( 100, 2, 30); vertex( 100, -2, 30); vertex(  0, -2, -80); vertex(  0, 2, -80);
-    vertex(-100, 2, 30); vertex(-100, -2, 30); vertex(100, -2,  30); vertex(100, 2,  30);
-    vertex(-2,   0, 98); vertex(2,   0, 98); vertex(2, -30, 98); vertex(-2, -30, 98);
-    vertex(-2,   0, 98); vertex(2,   0, 98); vertex(2,   0, 70); vertex(-2,   0, 70);
-    vertex(-2, -30, 98); vertex(2, -30, 98); vertex(2,   0, 70); vertex(-2,   0, 70);
-    endShape();
-    
-    popMatrix();
-}
-
 int LENGTH = 18;
 byte[] buf = new byte[18];
 
-void serialEvent(Serial port) {
-    interval = millis();
-    while (port.available() > 0) {
-        int ch = port.read();
-
-        if (synced == 0 && ch != '$') return;   // initial synchronization - also used to resync/realign if needed
-        synced = 1;
-        //print(ch); print(' ');
-
-        if ((serialCount == LENGTH-2 && ch != '\r')
-            || (serialCount == LENGTH-1 && ch != '\n'))  {
-            //println("error");
-            serialCount = 0;
-            synced = 0;
+void handleSerial() {
+    while(true) {
+        String str = port.readStringUntil('\n');
+        if(str == null)
             return;
-        }
-        
-        buf[serialCount++] = (byte)ch;
-        if(serialCount != LENGTH) return;
-        
-        serialCount = 0; // restart packet byte position
-        //println();
-        
-        ByteBuffer bb = ByteBuffer.wrap(buf).order(ByteOrder.LITTLE_ENDIAN);
-        
-        float _ = bb.getFloat();
-        yrp[0] = bb.getFloat();
-        yrp[1] = bb.getFloat();
-        yrp[2] = bb.getFloat();
-        
+        String[] tokens = str.split(" ");
+        if(str.startsWith("yrp")) {
+            yrp[0] = Float.parseFloat(tokens[1]);
+            yrp[1] = Float.parseFloat(tokens[2]);
+            yrp[2] = Float.parseFloat(tokens[3]);
         println("yrp:\t" + yrp[0]*180.0f/PI + "\t" + yrp[1]*180.0f/PI + "\t" + yrp[2]*180.0f/PI);
         
-        points[z] = new PVector(yrp[0]*180.0f/PI, yrp[1]*180.0f/PI);
-        if(++z == POINTS_SIZE)
-          z = 0;
-    }
-}
-
-void serialEvent0(Serial port) {
-    interval = millis();
-    while (port.available() > 0) {
-        int ch = port.read();
-
-        if (synced == 0 && ch != '$') return;   // initial synchronization - also used to resync/realign if needed
-        synced = 1;
-        print ((char)ch);
-
-        if ((serialCount == 1 && ch != 2)
-            || (serialCount == 12 && ch != '\r')
-            || (serialCount == 13 && ch != '\n'))  {
-            serialCount = 0;
-            synced = 0;
-            return;
+            points[z] = new PVector(yrp[0]*180.0f/PI, yrp[1]*180.0f/PI);
+            if(++z == POINTS_SIZE)
+                z = 0;
         }
-
-        if (serialCount > 0 || ch == '$') {
-            teapotPacket[serialCount++] = (char)ch;
-            if (serialCount == 14) {
-                serialCount = 0; // restart packet byte position
-                
-                // get quaternion from data packet
-                q[0] = ((teapotPacket[2] << 8) | teapotPacket[3]) / 16384.0f;
-                q[1] = ((teapotPacket[4] << 8) | teapotPacket[5]) / 16384.0f;
-                q[2] = ((teapotPacket[6] << 8) | teapotPacket[7]) / 16384.0f;
-                q[3] = ((teapotPacket[8] << 8) | teapotPacket[9]) / 16384.0f;
-                for (int i = 0; i < 4; i++) if (q[i] >= 2) q[i] = -4 + q[i];
-                
-                // set our toxilibs quaternion to new data
-                quat.set(q[0], q[1], q[2], q[3]);
-
-                ///*
-                // below calculations unnecessary for orientation only using toxilibs
-                
-                // calculate gravity vector
-                gravity[0] = 2 * (q[1]*q[3] - q[0]*q[2]);
-                gravity[1] = 2 * (q[0]*q[1] + q[2]*q[3]);
-                gravity[2] = q[0]*q[0] - q[1]*q[1] - q[2]*q[2] + q[3]*q[3];
-    
-                // calculate Euler angles
-                euler[0] = atan2(2*q[1]*q[2] - 2*q[0]*q[3], 2*q[0]*q[0] + 2*q[1]*q[1] - 1);
-                euler[1] = -asin(2*q[1]*q[3] + 2*q[0]*q[2]);
-                euler[2] = atan2(2*q[2]*q[3] - 2*q[0]*q[1], 2*q[0]*q[0] + 2*q[3]*q[3] - 1);
-    
-                // calculate yaw/pitch/roll angles
-                ypr[0] = atan2(2*q[1]*q[2] - 2*q[0]*q[3], 2*q[0]*q[0] + 2*q[1]*q[1] - 1);
-                ypr[1] = atan(gravity[0] / sqrt(gravity[1]*gravity[1] + gravity[2]*gravity[2]));
-                ypr[2] = atan(gravity[1] / sqrt(gravity[0]*gravity[0] + gravity[2]*gravity[2]));
-    
-                // output various components for debugging
-                //println("q:\t" + round(q[0]*100.0f)/100.0f + "\t" + round(q[1]*100.0f)/100.0f + "\t" + round(q[2]*100.0f)/100.0f + "\t" + round(q[3]*100.0f)/100.0f);
-                //println("euler:\t" + euler[0]*180.0f/PI + "\t" + euler[1]*180.0f/PI + "\t" + euler[2]*180.0f/PI);
-                //println("ypr:\t" + ypr[0]*180.0f/PI + "\t" + ypr[1]*180.0f/PI + "\t" + ypr[2]*180.0f/PI);
-                //*/
-                
-                yrp[0] = atan2(2*q[1]*q[2] - 2*q[0]*q[3], 2*q[0]*q[0] + 2*q[2]*q[2] - 1);
-                yrp[1] = atan(gravity[1] / sqrt(gravity[0]*gravity[0] + gravity[2]*gravity[2]));
-                yrp[2] = atan(gravity[0] / sqrt(gravity[1]*gravity[1] + gravity[2]*gravity[2]));
-                
-                points[z] = new PVector(yrp[0]*180.0f/PI, yrp[1]*180.0f/PI);
-                if(++z == POINTS_SIZE)
-                  z = 0;
-            }
-        }
-    }
-}
-
-void drawCylinder(float topRadius, float bottomRadius, float tall, int sides) {
-    float angle = 0;
-    float angleIncrement = TWO_PI / sides;
-    beginShape(QUAD_STRIP);
-    for (int i = 0; i < sides + 1; ++i) {
-        vertex(topRadius*cos(angle), 0, topRadius*sin(angle));
-        vertex(bottomRadius*cos(angle), tall, bottomRadius*sin(angle));
-        angle += angleIncrement;
-    }
-    endShape();
-    
-    // If it is not a cone, draw the circular top cap
-    if (topRadius != 0) {
-        angle = 0;
-        beginShape(TRIANGLE_FAN);
-        
-        // Center point
-        vertex(0, 0, 0);
-        for (int i = 0; i < sides + 1; i++) {
-            vertex(topRadius * cos(angle), 0, topRadius * sin(angle));
-            angle += angleIncrement;
-        }
-        endShape();
-    }
-  
-    // If it is not a cone, draw the circular bottom cap
-    if (bottomRadius != 0) {
-        angle = 0;
-        beginShape(TRIANGLE_FAN);
-    
-        // Center point
-        vertex(0, tall, 0);
-        for (int i = 0; i < sides + 1; i++) {
-            vertex(bottomRadius * cos(angle), tall, bottomRadius * sin(angle));
-            angle += angleIncrement;
-        }
-        endShape();
     }
 }

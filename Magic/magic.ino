@@ -140,16 +140,10 @@ class MP3Player
 	}
 };
 
-volatile bool mpuInterrupt = false;     // indicates whether MPU interrupt pin has gone high
-void dmpDataReady() {
-	mpuInterrupt = true;
-}
-
 class Gyro
 {
 	MPU6050 mpu;
 
-	const int INTERRUPT_PIN = 2;
 	// const int GYRO_OFFSET[3] = {-803, 0, 280};
 	// const int ACCEL_OFFSET[3] = {-6350, 280, 3114};
 	const int GYRO_OFFSET[3] = {220, 76, -85};
@@ -161,7 +155,6 @@ class Gyro
 	uint8_t devStatus;		// return status after each device operation (0 = success, !0 = error)
 	uint16_t packetSize;	// expected DMP packet size (default is 42 bytes)
 	uint16_t fifoCount;		// count of all bytes currently in FIFO
-  public:
 	uint8_t fifoBuffer[64]; // FIFO storage buffer
 
   public:
@@ -191,7 +184,6 @@ class Gyro
 		// initialize device
 		Serial.println(F("Initializing I2C devices..."));
 		mpu.initialize();
-		pinMode(INTERRUPT_PIN, INPUT);
 
 		// verify connection
 		Serial.println(F("Testing device connections..."));
@@ -227,7 +219,7 @@ class Gyro
 
 			// enable Arduino interrupt detection
 			Serial.println(F("Enabling interrupt detection (Arduino external interrupt 0)..."));
-			attachInterrupt(digitalPinToInterrupt(INTERRUPT_PIN), dmpDataReady, RISING);
+			// attachInterrupt(digitalPinToInterrupt(INTERRUPT_PIN), dmpDataReady, RISING);
 			mpuIntStatus = mpu.getIntStatus();
 
 			// set our DMP Ready flag so the main loop() function knows it's okay to use it
@@ -254,26 +246,7 @@ class Gyro
 		if (!dmpReady)
 			return;
 
-		// wait for MPU interrupt or extra packet(s) available
-		// while (!mpuInterrupt && fifoCount < packetSize)
-		// {
-		// 	// other program behavior stuff here
-		// 	// .
-		// 	// .
-		// 	// .
-		// 	// if you are really paranoid you can frequently test in between other
-		// 	// stuff to see if mpuInterrupt is true, and if so, "break;" from the
-		// 	// while() loop to immediately process the MPU data
-		// 	// .
-		// 	// .
-		// 	// .
-		// }
-
-		if (!mpuInterrupt && fifoCount < packetSize)
-			return;
-
 		// reset interrupt flag and get INT_STATUS byte
-		mpuInterrupt = false;
 		mpuIntStatus = mpu.getIntStatus();
 
 		// get current FIFO count
@@ -288,7 +261,7 @@ class Gyro
 
 			// otherwise, check for DMP data ready interrupt (this should happen frequently)
 		}
-		else if (mpuIntStatus & 0x02)
+		else
 		{
 			// wait for correct available data length, should be a VERY short wait
 			while (fifoCount < packetSize)
@@ -313,95 +286,6 @@ class Gyro
 		}
 	}
 };
-const int N = 20;
-class RecentStatistic
-{
-	int value[N] = {0};
-	int z = 0;
-	public:
-	void push(int x)
-	{
-		value[z++] = x;
-		if(z == N)	z = 0;
-	}
-	int getMean() const
-	{
-		int s = 0;
-		for(int i=0; i<N; ++i)
-			s += value[i];
-		return s / N;
-	}
-	int getS() const
-	{
-		int max = 0, min = 1 << 28;
-		for(int i=0; i<N; ++i)
-			if(value[i] > max)
-				max = value[i];
-			else if(value[i] < min)
-				min = value[i];
-		return max - min;
-		float v = 0;
-		int mean = getMean();
-		for(int i=0; i<N; ++i)
-			v += (value[i] - mean) * (value[i] - mean);
-		return sqrt(v / N);
-	}
-};
-
-class Counter
-{
-	int n, x;
-	public:
-	Counter(int n): n(n), x(0) { }
-	bool next() 
-	{
-		bool ret = ++x == n;
-		if(ret)	x = 0;
-		return ret;
-	}
-};
-
-enum MotionEvent {
-	None, Circle, Star, Square, Push
-};
-
-class GyroMotionRecognizer
-{
-	public:
-	Gyro *gyro;
-	MotionEvent event = None;
-	Quaternion lastq, diff;
-	int z = 0;
-	Counter counter, counter10;
-	RecentStatistic rs_a, rs_az, rs_gx;
-	bool orientation_moving, moving, pushing;
-	int a0;
-
-	GyroMotionRecognizer(Gyro* gyro): gyro(gyro), counter(10), counter10(10) {}
-	void loop() 
-	{
-		if(counter10.next()) 
-		{
-			rs_az.push(gyro->aaReal.z);
-			pushing = rs_az.getS() > 10000;
-		}
-		if(!counter.next())
-			return;
-		Quaternion const& q = gyro->q;
-		diff = q.getProduct(lastq.getReverse());
-		lastq = q;
-
-		a0 = abs(gyro->aaWorld.x) + abs(gyro->aaWorld.y) + abs(gyro->aaWorld.z - 10000);
-		rs_a.push(a0);
-		rs_gx.push(gyro->gyro.x);
-		orientation_moving = rs_gx.getS() > 200;
-		moving = rs_a.getS() > 10000;
-	}
-	MotionEvent getEvent() 
-	{
-		return event;
-	}
-};
 
 struct Device
 {
@@ -416,10 +300,6 @@ struct Device
 
 	Device()
 	{
-		Wire.begin();
-		Wire.setClock(400000);
-		Serial.begin(9600);
-		bluetoothSerial.begin(9600);
 	}
 	void loop()
 	{
@@ -428,63 +308,18 @@ struct Device
 	}
 };
 
-inline int f2i(float x)
-{
-	return (int)(x * 1000);
-}
-
 class Controller
 {
 	Device* device;
-	GyroMotionRecognizer motion;
-	Counter counter;
   public:
-	Controller(Device* device) : device(device), motion(&device->gyro), counter(1) {}
+	Controller(Device* device) : device(device) {}
 	void loop()
 	{
-		motion.loop();
-		if(counter.next())
-		{
-			uint8_t buf[512];
-			buf[0] = '$';
-			memcpy(buf+4, motion.gyro->yrp, sizeof(float) * 3);
-			buf[16] = '\r';
-			buf[17] = '\n';
-			Serial.write(buf, 18);
-
-			// char str[512];
-			// sprintf(str, "%d, %d, %d", f2i(motion.gyro->yrp[0]), f2i(motion.gyro->yrp[1]), f2i(motion.gyro->yrp[2]));			
-			
-			// sprintf(str, "%d", (int)(acos(motion.diff.w) * 2 * 180 / PI));
-			// sprintf(str, "%d, %d, %d, %d", device->gyro.gyro.x, device->gyro.gyro.y, device->gyro.gyro.z, motion.rs_gx.getS());
-			// sprintf(str, "%d, %d", motion.gyro->aaReal.z, motion.rs_az.getS());					
-			// sprintf(str, "%d, %d, %d", motion.pushing, motion.moving, motion.orientation_moving);			
-			// sprintf(str, "%d, %d, %d", motion.rs_a.getS(), motion.rs_a.getMean(), );
-			// if(device->playButton.isPressed())
-			// 	sprintf(str, "%d, %d, %d", device->gyro.gyro.x, device->gyro.gyro.y, device->gyro.gyro.z);
-			// else
-			// 	sprintf(str, "%d, %d, %d", device->gyro.aaWorld.x, device->gyro.aaWorld.y, device->gyro.aaWorld.z);			
-			// Serial.println(str);
-		}
-
-		// device.bluetoothSerial.println(str);
-		// switch(motion.getEvent()) 
-		// {
-		// 	case None:
-		// 		Serial.println("None");
-		// 		break;
-		// 	case Square:
-		// 		Serial.println("Square");
-		// 		break;
-		// 	case Star:
-		// 		Serial.println("Star");
-		// 		break;
-		// 	case Circle:
-		// 		Serial.println("Circle");
-		// 		break;
-		// 	default:
-		// 		break;
-		// }
+		Serial1.print("yrp ");
+		Serial1.print(device->gyro.yrp[0]); Serial1.print(" ");
+		Serial1.print(device->gyro.yrp[1]); Serial1.print(" ");
+		Serial1.print(device->gyro.yrp[2]); Serial1.print(" ");
+		Serial1.println("");
 		
 		// if (device.button.isPressed())
 		// 	device.led.set();
@@ -505,6 +340,11 @@ Controller* ctrl;
 
 void setup()
 {
+	Wire.begin();
+	Wire.setClock(400000);
+	Serial.begin(9600);
+	bluetoothSerial.begin(9600);
+
 	device = new Device();
 	ctrl = new Controller(device);
 }
