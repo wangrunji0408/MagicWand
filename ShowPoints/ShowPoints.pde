@@ -94,21 +94,11 @@ void setup() {
     setupSerial();
 }
 
-void resend() {
-    if (millis() - interval > 1000) {
-        // resend single character to trigger DMP init/start
-        // in case the MPU is halted/reset while applet is running
-        port.write('r');
-        interval = millis();
-    }
-}
-
 int POINTS_SIZE = 100;
 PVector[] points = new PVector[POINTS_SIZE];
 int z = 0;
 
 void draw() {
-    resend();
     handleSerial();
     
     background(0);
@@ -135,11 +125,20 @@ void handleSerial() {
             yrp[0] = Float.parseFloat(tokens[1]);
             yrp[1] = Float.parseFloat(tokens[2]);
             yrp[2] = Float.parseFloat(tokens[3]);
-        println("yrp:\t" + yrp[0]*180.0f/PI + "\t" + yrp[1]*180.0f/PI + "\t" + yrp[2]*180.0f/PI);
+        // println("yrp:\t" + yrp[0]*180.0f/PI + "\t" + yrp[1]*180.0f/PI + "\t" + yrp[2]*180.0f/PI);
         
             points[z] = new PVector(yrp[0]*180.0f/PI, yrp[1]*180.0f/PI);
             if(++z == POINTS_SIZE)
                 z = 0;
+        }
+        if(str.startsWith("button")) {
+            boolean pressed = tokens[1].charAt(0) == '1';
+            if(pressed) {
+                port.write("play 1\n");
+            }
+        }
+        if(str.startsWith("ack")) {
+            print(str);
         }
     }
 }

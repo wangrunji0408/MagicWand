@@ -292,8 +292,7 @@ struct Device
 	LEDBar ledBar = LEDBar(2);
 	LED led = LED(3);
 	LED status_led = LED(13);
-	Button playButton = Button(8);
-	Button pauseButton = Button(9);
+	Button button = Button(8);
 	MP3Player mp3Player = MP3Player(A4);
 	Gyro gyro = Gyro();	// must 5V
 
@@ -310,27 +309,47 @@ struct Device
 class Controller
 {
 	Device* device;
+	String cmd;
+	bool last_pressed = false;
+	int last_clock = 0;
   public:
 	Controller(Device* device) : device(device) {}
 	void loop()
-	{
-		Serial1.print("yrp ");
-		Serial1.print(device->gyro.yrp[0]); Serial1.print(" ");
-		Serial1.print(device->gyro.yrp[1]); Serial1.print(" ");
-		Serial1.print(device->gyro.yrp[2]); Serial1.print(" ");
-		Serial1.println("");
-		
-		// if (device.button.isPressed())
-		// 	device.led.set();
-		// else
-		// 	device.led.reset();
-		// int t = millis() / 1000 % 11;
-		// device.ledBar.setValue(t);
+	{		
+		int clock = millis() / 10;
+		if(clock != last_clock) {
+			// send yrp
+			Serial1.print("yrp ");
+			Serial1.print(device->gyro.yrp[0]); Serial1.print(" ");
+			Serial1.print(device->gyro.yrp[1]); Serial1.print(" ");
+			Serial1.print(device->gyro.yrp[2]); Serial1.print(" ");
+			Serial1.println("");
+		}
+		last_clock = clock;
 
-		// if (device.playButton.isPressed())
-		// 	device.mp3Player.play();
-		// else if (device.pauseButton.isPressed())
-		// 	device.mp3Player.pause();
+		// button event
+		bool pressed = device->button.isPressed();
+		if(last_pressed ^ pressed) {
+			Serial1.print("button ");
+			Serial1.println(pressed);
+		}
+		last_pressed = pressed;
+
+		while(Serial1.available()) {
+			char c = Serial1.read();
+			cmd.concat(c);
+			if(c != '\n')
+				continue;
+			Serial1.print("ack " + cmd);
+			if(cmd.startsWith("play")) {
+				int id = cmd.charAt(5) - '0';
+				// device->mp3Player.begin(id);
+				device->mp3Player.play();
+			} else if (cmd.startsWith("stop")) {
+				device->mp3Player.pause();
+			}
+			cmd = "";
+		}
 	}
 };
 
