@@ -34,6 +34,7 @@ import processing.opengl.*;
 import toxi.geom.*;
 import toxi.processing.*;
 import java.nio.*;
+import java.util.*;
 
 // NOTE: requires ToxicLibs to be installed in order to run properly.
 // 1. Download from http://toxiclibs.org/downloads
@@ -67,8 +68,8 @@ void setupSerial() {
     //String portName = Serial.list()[4];
     
     // get a specific serial port (use EITHER this OR the first-available code above)
-    // String portName = "/dev/cu.usbmodem1421";
-    String portName = "/dev/cu.HC-05-DevB";
+    String portName = "/dev/cu.usbmodem1421";
+    // String portName = "/dev/cu.HC-05-DevB";
     
     // open the serial port
     port = new Serial(this, portName, 115200);
@@ -94,51 +95,125 @@ void setup() {
     setupSerial();
 }
 
-int POINTS_SIZE = 100;
-PVector[] points = new PVector[POINTS_SIZE];
-int z = 0;
+Handwritting hw;
+boolean pressed = false;
 
 void draw() {
-    handleSerial();
-    
+    handleSerial(port);
     background(0);
-    stroke(255);
     
     translate(width / 2, height / 2);
-    for(int i=0; i<POINTS_SIZE; ++i) {
-      if(points[i] == null)
-        continue;
-      point(points[i].x * scale, points[i].y * scale);
-    }
+    if(hw != null)
+        hw.draw();
 }
 
-int LENGTH = 18;
-byte[] buf = new byte[18];
-
-void handleSerial() {
+void handleSerial(Serial port) {
     while(true) {
         String str = port.readStringUntil('\n');
         if(str == null)
             return;
         String[] tokens = str.split(" ");
-        if(str.startsWith("yrp")) {
+        if(str.startsWith("button")) {
+            pressed = tokens[1].charAt(0) == '1';
+            if(pressed) {
+                hw = new Handwritting();
+                // port.write("play 2\n");
+            } else {
+                hw.finish();
+                // port.write("stop\n");
+            }
+        }
+        if(str.startsWith("yrp") && pressed) {
             yrp[0] = Float.parseFloat(tokens[1]);
             yrp[1] = Float.parseFloat(tokens[2]);
             yrp[2] = Float.parseFloat(tokens[3]);
-        // println("yrp:\t" + yrp[0]*180.0f/PI + "\t" + yrp[1]*180.0f/PI + "\t" + yrp[2]*180.0f/PI);
+            // println("yrp:\t" + yrp[0]*180.0f/PI + "\t" + yrp[1]*180.0f/PI + "\t" + yrp[2]*180.0f/PI);
         
-            points[z] = new PVector(yrp[0]*180.0f/PI, yrp[1]*180.0f/PI);
-            if(++z == POINTS_SIZE)
-                z = 0;
-        }
-        if(str.startsWith("button")) {
-            boolean pressed = tokens[1].charAt(0) == '1';
-            if(pressed) {
-                port.write("play 1\n");
-            }
+            PVector p = new PVector(yrp[0]*180.0f/PI, yrp[1]*180.0f/PI);
+            hw.push(p);
         }
         if(str.startsWith("ack")) {
             print(str);
+        }
+    }
+}
+
+void draw_dir(float x, float y, int dir) {
+    int size = 2;
+    pushMatrix();
+    translate(x, y);
+    rotate(-PI / 2 * dir);
+    triangle(0, size*2, -size, 0, size, 0);
+    popMatrix();
+}
+
+void draw_circle(float x, float y, float r) {
+    ellipse(x-r, y-r, r*2, r*2);
+}
+
+class Handwritting {
+    List<PVector> points = new ArrayList<PVector>();
+
+    List<Integer> dirs = new ArrayList<Integer>();
+    List<Integer> dir_change_ids = new ArrayList<Integer>();
+    final int UP = 0;
+    final int RIGHT = 1;
+    final int DOWN = 2;
+    final int LEFT = 3;
+
+    List<Integer> corner_ids = new ArrayList<Integer>();
+    final float CORNER_ANGLE = PI / 4; // 45 degree
+
+    int get_direction(PVector p) {
+        if(abs(p.x) > abs(p.y)) {
+            if(p.x > 0)
+                return RIGHT;
+            return LEFT;
+        } else {
+            if(p.y > 0)
+                return UP;
+            return DOWN;
+        }
+    }
+    // boolean kill = false;
+    void push(PVector p) {
+        // if(!kill)
+            points.add(p);
+        // kill = !kill;
+    }
+    void finish() {
+        PVector last_d = new PVector(0, 0, 0);
+        for(int i=0; i<points.size()-1; ++i) {
+            PVector d = PVector.sub(points.get(i+1), points.get(i));
+            int dir = get_direction(d);
+            dirs.add(dir);
+            if(i >= 1 && dir == dirs.get(i-1) &&
+                (dir_change_ids.isEmpty() || dir != dirs.get(dir_change_ids.get(dir_change_ids.size()-1))))
+                dir_change_ids.add(i);
+
+            float angle = PVector.angleBetween(d, last_d);
+            if(angle > CORNER_ANGLE)
+                corner_ids.add(i);
+
+            last_d = d;
+        }
+
+    }
+    void draw() {
+        stroke(255);
+        noFill();
+        for(PVector p: points) {
+            point(p.x * scale, p.y * scale);
+        }
+        for(int i: dir_change_ids) {
+            PVector p = points.get(i);
+            draw_dir(p.x * scale, p.y * scale, dirs.get(i));
+        }
+        noStroke();
+        fill(255, 0, 0);
+        for(int i: corner_ids) {
+            PVector p = points.get(i);
+            draw_circle(p.x * scale, p.y * scale, 2);
         }
     }
 }

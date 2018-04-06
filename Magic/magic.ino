@@ -312,6 +312,7 @@ class Controller
 	String cmd;
 	bool last_pressed = false;
 	int last_clock = 0;
+	#define Serial1 Serial
   public:
 	Controller(Device* device) : device(device) {}
 	void loop()
@@ -343,10 +344,11 @@ class Controller
 			Serial1.print("ack " + cmd);
 			if(cmd.startsWith("play")) {
 				int id = cmd.charAt(5) - '0';
-				// device->mp3Player.begin(id);
-				device->mp3Player.play();
+				device->mp3Player.begin(id);
 			} else if (cmd.startsWith("stop")) {
 				device->mp3Player.pause();
+			} else if (cmd.startsWith("next")) {
+				device->mp3Player.next();
 			}
 			cmd = "";
 		}
@@ -361,7 +363,7 @@ void setup()
 	Wire.begin();
 	Wire.setClock(400000);
 	Serial.begin(9600);
-	Serial1.begin(115200);
+	// Serial1.begin(115200);
 
 	device = new Device();
 	ctrl = new Controller(device);
