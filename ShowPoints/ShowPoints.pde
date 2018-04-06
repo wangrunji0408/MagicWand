@@ -71,7 +71,7 @@ void setupSerial() {
     String portName = "/dev/cu.HC-05-DevB";
     
     // open the serial port
-    port = new Serial(this, portName, 9600);
+    port = new Serial(this, portName, 115200);
     
     //Serial bluetooth1 = new Serial(this, "/dev/cu.HC-05-DevB", 9600);
     //Serial bluetooth2 = new Serial(this, "/dev/cu.HC-05-DevB-1", 9600);

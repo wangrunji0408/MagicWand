@@ -296,7 +296,6 @@ struct Device
 	Button pauseButton = Button(9);
 	MP3Player mp3Player = MP3Player(A4);
 	Gyro gyro = Gyro();	// must 5V
-	#define bluetoothSerial Serial1
 
 	Device()
 	{
@@ -343,7 +342,7 @@ void setup()
 	Wire.begin();
 	Wire.setClock(400000);
 	Serial.begin(9600);
-	bluetoothSerial.begin(9600);
+	Serial1.begin(115200);
 
 	device = new Device();
 	ctrl = new Controller(device);
