@@ -68,8 +68,10 @@ void setupSerial() {
     //String portName = Serial.list()[4];
     
     // get a specific serial port (use EITHER this OR the first-available code above)
-    String portName = "/dev/cu.usbmodem1421";
+    // String portName = "/dev/cu.usbmodem1421";
+    // String portName = "/dev/cu.SLAB_USBtoUART";
     // String portName = "/dev/cu.HC-05-DevB";
+    String portName = "/dev/cu.HC-05-DevB-1";
     
     // open the serial port
     port = new Serial(this, portName, 115200);
@@ -95,8 +97,8 @@ void setup() {
     setupSerial();
 }
 
-Handwritting hw;
-boolean pressed = false;
+Handwritting hw = new Handwritting();
+boolean pressed = true;
 
 void draw() {
     handleSerial(port);
@@ -107,19 +109,30 @@ void draw() {
         hw.draw();
 }
 
+void finish() {
+    hw.finish();
+    print("Finish: ");
+    if(hw.isCircle())
+        print("Circle ");
+    if(hw.isSquare())
+        print("Square ");
+    println();           
+}
+
 void handleSerial(Serial port) {
     while(true) {
         String str = port.readStringUntil('\n');
         if(str == null)
             return;
         String[] tokens = str.split(" ");
+        // print(str);
         if(str.startsWith("button")) {
             pressed = tokens[1].charAt(0) == '1';
             if(pressed) {
                 hw = new Handwritting();
                 // port.write("play 2\n");
             } else {
-                hw.finish();
+                finish();
                 // port.write("stop\n");
             }
         }
@@ -164,6 +177,8 @@ class Handwritting {
     List<Integer> corner_ids = new ArrayList<Integer>();
     final float CORNER_ANGLE = PI / 4; // 45 degree
 
+    PVector pmin, pmax;
+
     int get_direction(PVector p) {
         if(abs(p.x) > abs(p.y)) {
             if(p.x > 0)
@@ -175,13 +190,12 @@ class Handwritting {
             return DOWN;
         }
     }
-    // boolean kill = false;
     void push(PVector p) {
-        // if(!kill)
-            points.add(p);
-        // kill = !kill;
+        points.add(p);
     }
     void finish() {
+        thin(2);
+        smooth(0.2);
         PVector last_d = new PVector(0, 0, 0);
         for(int i=0; i<points.size()-1; ++i) {
             PVector d = PVector.sub(points.get(i+1), points.get(i));
@@ -200,8 +214,7 @@ class Handwritting {
 
     }
     void draw() {
-        stroke(255);
-        noFill();
+        stroke(255); noFill();
         for(PVector p: points) {
             point(p.x * scale, p.y * scale);
         }
@@ -209,11 +222,76 @@ class Handwritting {
             PVector p = points.get(i);
             draw_dir(p.x * scale, p.y * scale, dirs.get(i));
         }
-        noStroke();
-        fill(255, 0, 0);
+        noStroke(); fill(255, 0, 0);
         for(int i: corner_ids) {
             PVector p = points.get(i);
             draw_circle(p.x * scale, p.y * scale, 2);
         }
+        stroke(255); noFill();
+        if(pmin != null && pmax != null) {
+            rect(pmin.x * scale, pmin.y * scale, (pmax.x - pmin.x) * scale, (pmax.y - pmin.y) * scale);
+        }
+    }
+    void smooth(float t) {
+        for(int i=1; i<points.size(); ++i) {
+            PVector last = points.get(i-1);
+            PVector p = points.get(i);
+            PVector newp = PVector.add(last.copy().mult(t), p.copy().mult(1-t));
+            points.set(i, newp);
+        }
+    }
+    void thin(float dist) {
+        List<PVector> ps = new ArrayList<PVector>();
+        PVector last = null;
+        for(PVector p: points) {
+            if(last != null &&  PVector.sub(p, last).mag() < dist)
+                continue;
+            last = p;
+            ps.add(p);
+        }
+        points = ps;
+    }
+    boolean has4Dir() {
+        for(int i=0; i<=dir_change_ids.size()-4; ++i) {
+            boolean[] exist = new boolean[4];
+            for(int j=0; j<4; ++j) {
+                exist[dirs.get(dir_change_ids.get(i+j))] = true;
+            }
+            int count = 0;
+            for(int j=0; j<4; ++j) 
+                count += exist[j]? 1: 0;
+            print(count);
+            if(count == 4) 
+                return true;
+        }
+        return false;
+    }
+    boolean isCircle() {
+        if(dir_change_ids.size() > 5 || corner_ids.size() > 1)
+            return false;
+        return has4Dir();
+    }
+    boolean isSquare() {
+        // Test if there is no point at centeral small square
+        float x0 = 1e3, x1 = -1e3;
+        float y0 = 1e3, y1 = -1e3;
+        for(PVector p: points) {
+            x0 = Float.min(x0, p.x);
+            x1 = Float.max(x1, p.x);
+            y0 = Float.min(y0, p.y);
+            y1 = Float.max(y1, p.y);
+        }
+        float t = 0.25;
+        float x2 = x0 * (1-t) + x1 * t;
+        float x3 = x1 * (1-t) + x0 * t;
+        float y2 = y0 * (1-t) + y1 * t;
+        float y3 = y1 * (1-t) + y0 * t;
+        pmin = new PVector(x2, y2);
+        pmax = new PVector(x3, y3);
+        for(PVector p: points) 
+            if(p.x > x2 && p.x < x3 && p.y > y2 && p.y < y3)
+                return false;
+        // Test if there are 4 dirs
+        return has4Dir();
     }
 }

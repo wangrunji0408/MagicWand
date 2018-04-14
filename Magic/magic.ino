@@ -289,10 +289,10 @@ class Gyro
 
 struct Device
 {
-	LEDBar ledBar = LEDBar(2);
-	LED led = LED(3);
+	// LEDBar ledBar = LEDBar(2);
+	// LED led = LED(3);
 	LED status_led = LED(13);
-	Button button = Button(8);
+	Button button = Button(2);
 	MP3Player mp3Player = MP3Player(A4);
 	Gyro gyro = Gyro();	// must 5V
 
@@ -362,7 +362,7 @@ void setup()
 {
 	Wire.begin();
 	Wire.setClock(400000);
-	Serial.begin(9600);
+	Serial.begin(115200);
 	// Serial1.begin(115200);
 
 	device = new Device();
