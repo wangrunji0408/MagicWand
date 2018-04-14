@@ -277,11 +277,11 @@ class Gyro
 			// mpu.dmpGetGyro(&gyro, fifoBuffer);
 			mpu.dmpGetQuaternion(&q, fifoBuffer);
 			// mpu.dmpGetEuler(euler, &q);
-			// mpu.dmpGetAccel(&aa, fifoBuffer);
+			mpu.dmpGetAccel(&aa, fifoBuffer);
 			mpu.dmpGetGravity(&gravity, &q);
 			// mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
 			dmpGetYawRollPitch(yrp, &q, &gravity);
-			// mpu.dmpGetLinearAccel(&aaReal, &aa, &gravity);
+			mpu.dmpGetLinearAccel(&aaReal, &aa, &gravity);
 			// mpu.dmpGetLinearAccelInWorld(&aaWorld, &aaReal, &q);
 		}
 	}
@@ -289,12 +289,14 @@ class Gyro
 
 struct Device
 {
-	// LEDBar ledBar = LEDBar(2);
+	LEDBar ledBar = LEDBar(3);
 	// LED led = LED(3);
 	LED status_led = LED(13);
 	Button button = Button(2);
-	MP3Player mp3Player = MP3Player(A4);
+	MP3Player mp3Player = MP3Player(A3);
 	Gyro gyro = Gyro();	// must 5V
+
+	int f = 2;	// blink frequency (Hz)
 
 	Device()
 	{
@@ -302,7 +304,7 @@ struct Device
 	void loop()
 	{
 		gyro.loop();
-		status_led.set((millis() / 500) & 1);
+		status_led.set((millis() / (500 / f)) & 1);
 	}
 };
 
@@ -324,6 +326,7 @@ class Controller
 			Serial1.print(device->gyro.yrp[0]); Serial1.print(" ");
 			Serial1.print(device->gyro.yrp[1]); Serial1.print(" ");
 			Serial1.print(device->gyro.yrp[2]); Serial1.print(" ");
+			Serial1.print(device->gyro.aaReal.y); Serial1.print(" ");
 			Serial1.println("");
 		}
 		last_clock = clock;
@@ -349,6 +352,12 @@ class Controller
 				device->mp3Player.pause();
 			} else if (cmd.startsWith("next")) {
 				device->mp3Player.next();
+			} else if (cmd.startsWith("setf")) {
+				int f = cmd.charAt(5) - '0';
+				device->f = f;
+			} else if (cmd.startsWith("setbar")) {
+				int x = cmd.charAt(7) - '0';
+				device->ledBar.setValue(x);
 			}
 			cmd = "";
 		}

@@ -42,23 +42,8 @@ import java.util.*;
 //    (location may be different on Mac/Linux)
 // 3. Run and bask in awesomeness
 
-ToxiclibsSupport gfx;
-
-Serial port;                         // The serial port
-char[] teapotPacket = new char[14];  // InvenSense Teapot packet
-int serialCount = 0;                 // current packet byte position
-int synced = 0;
-int interval = 0;
-
-float[] q = new float[4];
-Quaternion quat = new Quaternion(1, 0, 0, 0);
-
-float[] gravity = new float[3];
-float[] euler = new float[3];
-float[] ypr = new float[3];  // rotate asix: z-y-x
-float[] yrp = new float[3];  // rotate asix: z-x-y 
-
 final int scale = 2;
+Device device1;
 
 void setupSerial() {
     // display serial port list for debugging/clarity
@@ -71,24 +56,17 @@ void setupSerial() {
     // String portName = "/dev/cu.usbmodem1421";
     // String portName = "/dev/cu.SLAB_USBtoUART";
     // String portName = "/dev/cu.HC-05-DevB";
-    String portName = "/dev/cu.HC-05-DevB-1";
+    // String portName = "/dev/cu.HC-05-DevB-1";
     
-    // open the serial port
-    port = new Serial(this, portName, 115200);
-    
-    //Serial bluetooth1 = new Serial(this, "/dev/cu.HC-05-DevB", 9600);
-    //Serial bluetooth2 = new Serial(this, "/dev/cu.HC-05-DevB-1", 9600);
-    
-    // send single character to trigger DMP init/start
-    // (expected by MPU6050_DMP6 example Arduino sketch)
-    //port.write('r');
+    device1 = new Device();
+    device1.port = new Serial(this, "/dev/cu.HC-05-DevB-1", 115200);
+    device1.init();
 }
 
 void setup() {    
     // 300px square viewport using OpenGL rendering
     // size(300, 300, P3D);
     size(720, 360);
-    gfx = new ToxiclibsSupport(this);
 
     // setup lights and antialiasing
     lights();
@@ -97,56 +75,87 @@ void setup() {
     setupSerial();
 }
 
-Handwritting hw = new Handwritting();
-boolean pressed = true;
-
 void draw() {
-    handleSerial(port);
+    device1.handleSerial();
     background(0);
     
     translate(width / 2, height / 2);
-    if(hw != null)
-        hw.draw();
+    device1.draw();
 }
 
-void finish() {
-    hw.finish();
-    print("Finish: ");
-    if(hw.isCircle())
-        print("Circle ");
-    if(hw.isSquare())
-        print("Square ");
-    println();           
-}
+class Device {
+    Serial port;
+    Handwritting hw = new Handwritting();
+    PushDetector pd = new PushDetector();
+    boolean pressed = true;
+    int barValue = 0;
 
-void handleSerial(Serial port) {
-    while(true) {
-        String str = port.readStringUntil('\n');
-        if(str == null)
-            return;
-        String[] tokens = str.split(" ");
-        // print(str);
-        if(str.startsWith("button")) {
-            pressed = tokens[1].charAt(0) == '1';
-            if(pressed) {
-                hw = new Handwritting();
-                // port.write("play 2\n");
-            } else {
-                finish();
-                // port.write("stop\n");
+    void setBar(int value) {
+        value = Integer.min(9, value);
+        value = Integer.max(0, value);
+        barValue = value;
+        port.write("setbar " + Integer.toString(value) + "\n");
+    }
+
+    void setF(int f) {
+        port.write("setf " + Integer.toString(f) + "\n");     
+    }
+
+    void finish() {
+        hw.finish();
+        print("Finish: ");
+        if(hw.isCircle())
+            print("Circle ");
+        if(hw.isSquare())
+            print("Square ");
+        println();           
+    }
+
+    void draw() {
+        if(hw != null)
+            hw.draw();
+    }
+
+    void init() {
+        setBar(0);
+        setF(1);
+    }
+
+    void handleSerial() {
+        while(true) {
+            String str = port.readStringUntil('\n');
+            if(str == null)
+                return;
+            String[] tokens = str.split(" ");
+            // print(str);
+            if(str.startsWith("button")) {
+                pressed = tokens[1].charAt(0) == '1';
+                if(pressed) {
+                    hw = new Handwritting();
+                    // port.write("play 2\n");
+                } else {
+                    finish();
+                    // port.write("stop\n");
+                }
             }
-        }
-        if(str.startsWith("yrp") && pressed) {
-            yrp[0] = Float.parseFloat(tokens[1]);
-            yrp[1] = Float.parseFloat(tokens[2]);
-            yrp[2] = Float.parseFloat(tokens[3]);
-            // println("yrp:\t" + yrp[0]*180.0f/PI + "\t" + yrp[1]*180.0f/PI + "\t" + yrp[2]*180.0f/PI);
-        
-            PVector p = new PVector(yrp[0]*180.0f/PI, yrp[1]*180.0f/PI);
-            hw.push(p);
-        }
-        if(str.startsWith("ack")) {
-            print(str);
+            if(str.startsWith("yrp")) {
+                float[] yrp = new float[3];  // rotate asix: z-x-y 
+                yrp[0] = Float.parseFloat(tokens[1]);
+                yrp[1] = Float.parseFloat(tokens[2]);
+                yrp[2] = Float.parseFloat(tokens[3]);
+                float ay = Float.parseFloat(tokens[4]);
+                if(pd.isPush(ay)) {
+                    setBar(barValue + 1);
+                }
+                // println("yrp:\t" + yrp[0]*180.0f/PI + "\t" + yrp[1]*180.0f/PI + "\t" + yrp[2]*180.0f/PI);
+                if(pressed) {
+                    PVector p = new PVector(yrp[0]*180.0f/PI, yrp[1]*180.0f/PI);
+                    hw.push(p);
+                }
+            }
+            if(str.startsWith("ack")) {
+                print(str);
+            }
         }
     }
 }
@@ -293,5 +302,18 @@ class Handwritting {
                 return false;
         // Test if there are 4 dirs
         return has4Dir();
+    }
+}
+
+class PushDetector {
+    long lastPushMs;
+    boolean isPush(float ay) {
+        if(abs(ay) < 10000)
+            return false;
+        long nowMs = System.currentTimeMillis();
+        if(nowMs - lastPushMs < 200)
+            return false;
+        lastPushMs = nowMs;
+        return true;
     }
 }
