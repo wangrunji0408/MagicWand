@@ -87,18 +87,25 @@ class Device {
     Serial port;
     Handwritting hw = new Handwritting();
     PushDetector pd = new PushDetector();
+    CollectManager cm = new CollectManager();
     boolean pressed = true;
-    int barValue = 0;
+    int barValue = -1;
+    int lastF = 1;
 
     void setBar(int value) {
         value = Integer.min(9, value);
         value = Integer.max(0, value);
+        if(value != barValue)
+            port.write("setbar " + Integer.toString(value) + "\n");
         barValue = value;
-        port.write("setbar " + Integer.toString(value) + "\n");
     }
 
     void setF(int f) {
-        port.write("setf " + Integer.toString(f) + "\n");     
+        f = Integer.min(9, f);
+        f = Integer.max(0, f);
+        if(f != lastF)
+            port.write("setf " + Integer.toString(f) + "\n");
+        lastF = f;        
     }
 
     void finish() {
@@ -112,6 +119,7 @@ class Device {
     }
 
     void draw() {
+        cm.draw();
         if(hw != null)
             hw.draw();
     }
@@ -119,6 +127,20 @@ class Device {
     void init() {
         setBar(0);
         setF(1);
+    }
+
+    void handlePos(PVector p, float ay) {
+        if(pd.isPush(ay)) {
+            if(cm.canCollect()) {
+                cm.collect();
+                setBar(barValue + 1);                
+            }
+        }
+        if(pressed) {
+            hw.push(p);
+        }
+        cm.updatePos(p);
+        setF(cm.canCollect()? 0: cm.getFreq());
     }
 
     void handleSerial() {
@@ -144,14 +166,9 @@ class Device {
                 yrp[1] = Float.parseFloat(tokens[2]);
                 yrp[2] = Float.parseFloat(tokens[3]);
                 float ay = Float.parseFloat(tokens[4]);
-                if(pd.isPush(ay)) {
-                    setBar(barValue + 1);
-                }
+                PVector p = new PVector(yrp[0]*180.0f/PI, yrp[1]*180.0f/PI);
+                handlePos(p, ay);
                 // println("yrp:\t" + yrp[0]*180.0f/PI + "\t" + yrp[1]*180.0f/PI + "\t" + yrp[2]*180.0f/PI);
-                if(pressed) {
-                    PVector p = new PVector(yrp[0]*180.0f/PI, yrp[1]*180.0f/PI);
-                    hw.push(p);
-                }
             }
             if(str.startsWith("ack")) {
                 print(str);
@@ -315,5 +332,83 @@ class PushDetector {
             return false;
         lastPushMs = nowMs;
         return true;
+    }
+}
+
+class CollectManager {
+    final int COLLECT_POINT_COUNT = 5;
+    PVector[] collectPoints = new PVector[COLLECT_POINT_COUNT];
+    PVector pos;
+
+    CollectManager() {
+        for(int i=0; i<COLLECT_POINT_COUNT; ++i)
+            collectPoints[i] = newCollectPoint();
+    }
+    void collect() {
+        if(!canCollect())
+            return;
+        int id = getMinDistId();
+        collectPoints[id] = newCollectPoint();
+    }
+    float getMinDist() {
+        float d = 1e3;
+        for(PVector p: collectPoints)
+            d = Float.min(d, dist(p, pos));
+        return d;
+    }
+    int getMinDistId() {
+        float d = 1e3;
+        int id = -1;
+        for(int i=0; i<COLLECT_POINT_COUNT; ++i) {
+            float dd = dist(collectPoints[i], pos);
+            if(dd >= d)
+                continue;
+            d = dd;
+            id = i;
+        }
+        return id;
+    }
+    boolean canCollect() {
+        return getFreq() >= 10;
+    }
+    int getFreq() {
+        float degree = getMinDist() / PI * 180;
+        return (int)(100 / degree);
+    }
+    void updatePos(PVector p) {
+        pos = xy2real(p);
+    }
+    void draw() {
+        stroke(0, 255, 0);
+        for(PVector p: collectPoints) {
+            if(p == null)
+                continue;
+            PVector xy = real2xy(p);
+            point(xy.x * scale, xy.y * scale);
+        }
+        if(pos != null) {
+            stroke(0, 0, 255);   
+            PVector xy = real2xy(pos);     
+            point(xy.x * scale, xy.y * scale);
+        }
+    }
+    PVector real2xy(PVector p) {
+        float y = asin(p.z) / PI * 180;
+        float x = atan2(p.y, p.x) / PI * 180;
+        return new PVector(x, y, 0);
+    }
+    PVector xy2real(PVector p) {
+        float x = p.x / 180 * PI;
+        float y = p.y / 180 * PI;
+        return new PVector(cos(x) * cos(y), sin(x) * cos(y), sin(y));
+    }
+    PVector newCollectPoint() {
+        PVector p = PVector.random3D();
+        if(p.z < 0)
+            p.z = -p.z;
+        return p;
+    }
+    float dist(PVector p1, PVector p2) {
+        return PVector.angleBetween(p1, p2);
     }
 }

@@ -304,7 +304,10 @@ struct Device
 	void loop()
 	{
 		gyro.loop();
-		status_led.set((millis() / (500 / f)) & 1);
+		if(f < 1)	// on
+			status_led.set(true);
+		else		// blink at f Hz
+			status_led.set((millis() / (500 / f)) & 1);
 	}
 };
 
