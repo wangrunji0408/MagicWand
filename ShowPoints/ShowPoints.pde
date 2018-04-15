@@ -43,7 +43,7 @@ import java.util.*;
 // 3. Run and bask in awesomeness
 
 final int scale = 2;
-Device device1;
+Device device1, device2;
 
 void setupSerial() {
     // display serial port list for debugging/clarity
@@ -58,9 +58,24 @@ void setupSerial() {
     // String portName = "/dev/cu.HC-05-DevB";
     // String portName = "/dev/cu.HC-05-DevB-1";
     
+    try {
     device1 = new Device();
     device1.port = new Serial(this, "/dev/cu.HC-05-DevB-1", 115200);
     device1.init();
+        println("Device1 OK");        
+    } catch (Exception e) {
+        device1 = null;        
+        println("Device1 Failed");
+}
+    try {
+        device2 = new Device();
+        device2.port = new Serial(this, "/dev/cu.HC-05-DevB-2", 115200);
+        device2.init();
+        println("Device2 OK");        
+    } catch (Exception e) {
+        device2 = null;
+        println("Device2 Failed");
+    }
 }
 
 void setup() {    
@@ -76,11 +91,16 @@ void setup() {
 }
 
 void draw() {
-    device1.handleSerial();
     background(0);
-    
     translate(width / 2, height / 2);
+    if(device1 != null) {
+        device1.handleSerial();
     device1.draw();
+}
+    if(device2 != null) {
+        device2.handleSerial();
+        device2.draw();
+    }
 }
 
 class Device {
@@ -115,6 +135,8 @@ class Device {
             print("Circle ");
         if(hw.isSquare())
             print("Square ");
+        print("Round=");
+            print(hw.calcRound());
         println();           
     }
 
@@ -125,7 +147,7 @@ class Device {
     }
 
     void init() {
-        setBar(0);
+        setBar(1);
         setF(1);
     }
 
@@ -253,10 +275,10 @@ class Handwritting {
             PVector p = points.get(i);
             draw_circle(p.x * scale, p.y * scale, 2);
         }
-        stroke(255); noFill();
-        if(pmin != null && pmax != null) {
-            rect(pmin.x * scale, pmin.y * scale, (pmax.x - pmin.x) * scale, (pmax.y - pmin.y) * scale);
-        }
+        // stroke(255); noFill();
+        // if(pmin != null && pmax != null) {
+        //     rect(pmin.x * scale, pmin.y * scale, (pmax.x - pmin.x) * scale, (pmax.y - pmin.y) * scale);
+        // }
     }
     void smooth(float t) {
         for(int i=1; i<points.size(); ++i) {
@@ -286,11 +308,29 @@ class Handwritting {
             int count = 0;
             for(int j=0; j<4; ++j) 
                 count += exist[j]? 1: 0;
-            print(count);
             if(count == 4) 
                 return true;
         }
         return false;
+    }
+    int calcRound() {
+        int last_d = 0;
+        int last_dir = -1;
+        int count = 0;
+        int max_count = 0;
+        for(int id: dir_change_ids) {
+            int dir = dirs.get(id);
+            int d = (dir - last_dir + 4) % 4; // expect 1 or -1
+            if(last_d == d) {
+                count++;
+                max_count = Integer.max(max_count, count);
+            }
+            else
+                count = 0;
+            last_d = d;
+            last_dir = dir;
+        }
+        return (max_count + 1) / 4;
     }
     boolean isCircle() {
         if(dir_change_ids.size() > 5 || corner_ids.size() > 1)
@@ -373,7 +413,7 @@ class CollectManager {
     }
     int getFreq() {
         float degree = getMinDist() / PI * 180;
-        return (int)(100 / degree);
+        return (int)(200 / degree);
     }
     void updatePos(PVector p) {
         pos = xy2real(p);
