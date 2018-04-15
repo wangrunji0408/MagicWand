@@ -44,8 +44,9 @@ import java.util.*;
 // 3. Run and bask in awesomeness
 
 final int scale = 2;
-boolean use1 = true, use2 = false;
+boolean use1 = true, use2 = true;
 Device device1, device2;
+IGame game;
 
 void setupSerial() {
     // display serial port list for debugging/clarity
@@ -95,15 +96,17 @@ void setup() {
     smooth();
     
     setupSerial();
+    game = new Game1(device1, device2);
 }
 
 void draw() {
     background(0);
     translate(width / 2, height / 2);
+    game.draw();
     if(device1 != null) {
         device1.handleSerial();
-    device1.draw();
-}
+        device1.draw();
+    }
     if(device2 != null) {
         device2.handleSerial();
         device2.draw();
@@ -119,6 +122,7 @@ class Device {
     boolean pressed = true;
     int barValue = -1;
     int lastF = 1;
+    Runnable finishHandler;
 
     void setBar(int value) {
         value = Integer.min(9, value);
@@ -145,12 +149,8 @@ class Device {
         //     print("Square ");
         int round = hw.calcRound();
         print("Round="); print(round); println();
-        if(round == 1)
-            sound.play("发射");
-        else if(round == 2)
-            sound.play("光波");
-        else if(round == 3)
-            sound.play("闪耀");
+        if(finishHandler != null)
+            finishHandler.run();
     }
 
     void draw() {
@@ -209,6 +209,60 @@ class Device {
                 // print(str);
             }
         }
+    }
+}
+
+interface IGame {
+    void draw();
+}
+
+// 任意时刻收集/攻击
+class Game1 implements IGame {
+    Device d1, d2;
+    int hp1, hp2;
+
+    Game1(Device device1, Device device2)
+    {
+        assert(device1 != null && device2 != null);
+        hp1 = 10;
+        hp2 = 10;
+        this.d1 = device1;
+        this.d2 = device2;
+        d1.finishHandler = new Runnable() {
+            public void run() {
+                int round = d1.hw.calcRound();
+                if(d1.barValue < round)
+                    return;
+                d1.setBar(d1.barValue - round);
+                playSound(round);
+                hp2 -= round;
+            }
+        };
+        d2.finishHandler = new Runnable() {
+            public void run() {
+                int round = d2.hw.calcRound();
+                if(d2.barValue < round)
+                    return;
+                d2.setBar(d2.barValue - round);
+                playSound(round);
+                hp1 -= round;
+            }
+        };
+    }
+    void playSound(int round) {
+        if(round == 1)
+            d1.sound.play("发射");
+        else if(round == 2)
+            d1.sound.play("光波");
+        else if(round == 3)
+            d1.sound.play("闪耀");
+    }
+    void draw() {
+        // HP Bar
+        noStroke();
+        fill(255, 0, 0);
+        rect(-300, -160, hp1 * 10, 10);
+        rect(-300, -120, hp2 * 10, 10);
     }
 }
 
