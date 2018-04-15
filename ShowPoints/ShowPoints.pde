@@ -31,6 +31,7 @@ THE SOFTWARE.
 
 import processing.serial.*;
 import processing.opengl.*;
+import processing.sound.*;
 import toxi.geom.*;
 import toxi.processing.*;
 import java.nio.*;
@@ -43,6 +44,7 @@ import java.util.*;
 // 3. Run and bask in awesomeness
 
 final int scale = 2;
+boolean use1 = true, use2 = false;
 Device device1, device2;
 
 void setupSerial() {
@@ -58,27 +60,32 @@ void setupSerial() {
     // String portName = "/dev/cu.HC-05-DevB";
     // String portName = "/dev/cu.HC-05-DevB-1";
     
+    SoundPlayer sound = new SoundPlayer(this);
+    if(use1)
     try {
-    device1 = new Device();
-    device1.port = new Serial(this, "/dev/cu.HC-05-DevB-1", 115200);
-    device1.init();
+        device1 = new Device();
+        device1.port = new Serial(this, "/dev/cu.HC-05-DevB-1", 115200);
+        device1.sound = sound;
+        device1.init();
         println("Device1 OK");        
     } catch (Exception e) {
         device1 = null;        
         println("Device1 Failed");
-}
+    }
+    if(use2)
     try {
         device2 = new Device();
         device2.port = new Serial(this, "/dev/cu.HC-05-DevB-2", 115200);
+        device2.sound = sound;
         device2.init();
-        println("Device2 OK");        
+        println("Device2 OK"); 
     } catch (Exception e) {
         device2 = null;
         println("Device2 Failed");
     }
 }
 
-void setup() {    
+void setup() {
     // 300px square viewport using OpenGL rendering
     // size(300, 300, P3D);
     size(720, 360);
@@ -104,6 +111,7 @@ void draw() {
 }
 
 class Device {
+    SoundPlayer sound;
     Serial port;
     Handwritting hw = new Handwritting();
     PushDetector pd = new PushDetector();
@@ -131,13 +139,18 @@ class Device {
     void finish() {
         hw.finish();
         print("Finish: ");
-        if(hw.isCircle())
-            print("Circle ");
-        if(hw.isSquare())
-            print("Square ");
-        print("Round=");
-            print(hw.calcRound());
-        println();           
+        // if(hw.isCircle())
+        //     print("Circle ");
+        // if(hw.isSquare())
+        //     print("Square ");
+        int round = hw.calcRound();
+        print("Round="); print(round); println();
+        if(round == 1)
+            sound.play("发射");
+        else if(round == 2)
+            sound.play("光波");
+        else if(round == 3)
+            sound.play("闪耀");
     }
 
     void draw() {
@@ -193,7 +206,7 @@ class Device {
                 // println("yrp:\t" + yrp[0]*180.0f/PI + "\t" + yrp[1]*180.0f/PI + "\t" + yrp[2]*180.0f/PI);
             }
             if(str.startsWith("ack")) {
-                print(str);
+                // print(str);
             }
         }
     }
@@ -450,5 +463,21 @@ class CollectManager {
     }
     float dist(PVector p1, PVector p2) {
         return PVector.angleBetween(p1, p2);
+    }
+}
+
+class SoundPlayer {
+    Map<String, SoundFile> files = new HashMap();
+
+    SoundPlayer(ShowPoints parent) {
+        String soundPath = "/Users/wangrunji/Documents/Codes/Tsinghua/Grade3-2/Entertainment/Magic/sound";
+        files.put("发射", new SoundFile(parent, soundPath + "/发射发射.mp3"));
+        files.put("光波", new SoundFile(parent, soundPath + "/发射光波.mp3"));
+        files.put("闪耀", new SoundFile(parent, soundPath + "/闪耀.mp3"));
+    }
+
+    void play(String name) {
+        println("playing: " + name);
+        files.get(name).play();
     }
 }
