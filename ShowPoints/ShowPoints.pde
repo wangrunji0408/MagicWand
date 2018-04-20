@@ -89,7 +89,7 @@ void setup() {
     smooth();
     
     setupSerial();
-    game = new Game1(device1, device2);
+    game = new Game2(device1, device2);
 }
 
 void draw() {    
@@ -115,7 +115,9 @@ class Device {
     boolean pressed = false;
     int barValue = -1;
     int lastF = 1;
+    boolean autoF = true;
     Runnable finishHandler;
+    Runnable pushHandler;
 
     void setBar(int value) {
         value = Integer.min(9, value);
@@ -159,16 +161,15 @@ class Device {
 
     void handlePos(PVector p, float ay) {
         if(pd.isPush(ay)) {
-            if(cm.canCollect()) {
-                cm.collect();
-                setBar(barValue + 1);                
-            }
+            if(pushHandler != null)
+                pushHandler.run();
         }
         if(pressed) {
             hw.push(p);
         }
         cm.updatePos(p);
-        setF(cm.canCollect()? 0: cm.getFreq());
+        if(autoF)        
+            setF(cm.canCollect()? 0: cm.getFreq());
     }
 
     void handleSerial() {
@@ -249,6 +250,24 @@ class Game1 implements IGame {
                 hp1 -= round;
             }
         };
+        d1.pushHandler = new Runnable() {
+            public void run() {
+                if(d1.cm.canCollect()) {
+                    d1.cm.collect();
+                    d1.setBar(d1.barValue + 1);      
+                    d1.sound.play("coin");
+                }
+            }
+        };
+        d2.pushHandler = new Runnable() {
+            public void run() {
+                if(d2.cm.canCollect()) {
+                    d2.cm.collect();
+                    d2.setBar(d2.barValue + 1);      
+                    d2.sound.play("coin");
+                }
+            }
+        };
     }
     void playSound(int round) {
         if(round == 1)
@@ -268,6 +287,149 @@ class Game1 implements IGame {
         text("P2", -340, -100);
         rect(-300, -160, hp1 * 20, 10);
         rect(-300, -120, hp2 * 20, 10);
+    }
+}
+
+// 王芷规则：
+// 1. 开始时集中收集，结束后随机分配ABC个数
+// 2. 之后回合制出招A>B>C，大克小
+class Game2 implements IGame {
+    Device d1, d2;
+    int[] count1 = new int[4];
+    int[] count2 = new int[4];
+    int last1, last2;
+    int total1, total2;
+    int score1, score2;
+    long startTime = System.currentTimeMillis() / 1000;
+    int stage = -1, lastStage = -1;
+    final int COLL_TIME = 10;
+    final int ROUND_TIME = 10;
+    PImage bgp = loadImage(PATH + "/picture/background.jpeg");
+
+    Game2(Device device1, Device device2)
+    {
+        assert(device1 != null && device2 != null);
+        this.d1 = device1;
+        this.d2 = device2;
+        d1.pushHandler = new Runnable() {
+            public void run() {
+                if(d1.cm.canCollect()) {
+                    d1.cm.collect();
+                    total1 ++;
+                    d1.sound.play("coin");
+                }
+            }
+        };
+        d2.pushHandler = new Runnable() {
+            public void run() {
+                if(d2.cm.canCollect()) {
+                    d2.cm.collect();
+                    total2 ++;
+                    d2.sound.play("coin");
+                }
+            }
+        };
+    }
+    int getStage() {
+        int time = getTimeS();
+        if(time < COLL_TIME)
+            return 0;
+        return (time - COLL_TIME) / ROUND_TIME + 1;
+    }
+    int getCountdown() {
+        int time = getTimeS();
+        if(time < COLL_TIME)
+            return COLL_TIME - time;
+        return ROUND_TIME-1 - (time - COLL_TIME) % ROUND_TIME;
+    }
+    int getTimeS() {
+        return (int)(System.currentTimeMillis() / 1000 - startTime);
+    }
+    void playSound(int round) {
+        if(round == 1)
+            d1.sound.play("风声");
+        else if(round == 2)
+            d1.sound.play("光波");
+        else if(round == 3)
+            d1.sound.play("闪耀");
+    }
+    void generate(int total, int[] c) {
+        if(total > 10) {
+            c[1] = 2; c[2] = 1; c[3] = 2;
+        } else if(total > 5) {
+            c[1] = 3; c[2] = 1; c[3] = 1;
+        } else {
+            c[1] = 3; c[2] = 2; c[3] = 0;
+        }
+    }
+    String countToStr(int[] c) {
+        return "A" + Integer.toString(c[3]) 
+            + " B" + Integer.toString(c[2])
+            + " C" + Integer.toString(c[1]);
+    }
+    void event() {
+        stage = getStage();
+        if(stage == 1 && lastStage == 0) {
+            d1.autoF = false; d1.setF(0);
+            d2.autoF = false; d2.setF(0);
+            d1.pushHandler = null;
+            d2.pushHandler = null;
+            d1.finishHandler = new Runnable() {
+                public void run() {
+                    last1 = d1.hw.calcRound();
+                    if(count1[last1] > 0)
+                        playSound(last1);
+                }
+            };
+            d2.finishHandler = new Runnable() {
+                public void run() {
+                    last2 = d2.hw.calcRound();
+                    if(count2[last2] > 0)
+                        playSound(last2);
+                }
+            };
+            generate(total1, count1);
+            generate(total2, count2);
+        } else if(stage != lastStage && lastStage <= 5) {
+            // check validation
+            if(count1[last1] > 0)
+                count1[last1]--;
+            else
+                last1 = 0;
+            if(count2[last2] > 0)
+                count2[last2]--;
+            else
+                last2 = 0;
+            // debug
+            print("Stage "); print(lastStage); print(": "); 
+            print(last1); print(" "); println(last2);
+            // score
+            if(last1 > last2)
+                score1++;
+            else if(last2 > last1)
+                score2++;
+            // reset
+            last1 = last2 = 0;
+        }
+        lastStage = stage;
+    }
+    void draw() {
+        event();
+        background(bgp);
+        
+        noStroke();
+        fill(255, 0, 0);
+        textSize(100);
+        if(stage > 5) {
+            text("GameOver", 0, 0);
+        } else {
+            text(Integer.toString(getCountdown()), 0, 0);
+        }
+        textSize(50);
+        text(Integer.toString(score1), -200, 0);
+        text(Integer.toString(score2), 200, 0);
+        text(countToStr(count1), -250, -100);
+        text(countToStr(count2), 150, -100);
     }
 }
 
@@ -573,6 +735,7 @@ class SoundPlayer {
         files.put("风声", new SoundFile(parent, soundPath + "/风声卷过.mp3"));
         files.put("光波", new SoundFile(parent, soundPath + "/发射光波.mp3"));
         files.put("闪耀", new SoundFile(parent, soundPath + "/闪耀.mp3"));
+        files.put("coin", new SoundFile(parent, soundPath + "/coin.mp3"));
     }
 
     void play(String name) {
