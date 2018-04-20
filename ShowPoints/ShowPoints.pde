@@ -32,17 +32,10 @@ THE SOFTWARE.
 import processing.serial.*;
 import processing.opengl.*;
 import processing.sound.*;
-import toxi.geom.*;
-import toxi.processing.*;
 import java.nio.*;
 import java.util.*;
 
-// NOTE: requires ToxicLibs to be installed in order to run properly.
-// 1. Download from http://toxiclibs.org/downloads
-// 2. Extract into [userdir]/Processing/libraries
-//    (location may be different on Mac/Linux)
-// 3. Run and bask in awesomeness
-
+final String PATH = "/Users/wangrunji/Documents/Codes/Tsinghua/Grade3-2/Entertainment/Magic";
 final int scale = 2;
 boolean use1 = true, use2 = true;
 Device device1, device2;
@@ -99,7 +92,7 @@ void setup() {
     game = new Game1(device1, device2);
 }
 
-void draw() {
+void draw() {    
     background(0);
     translate(width / 2, height / 2);
     game.draw();
@@ -119,7 +112,7 @@ class Device {
     Handwritting hw = new Handwritting();
     PushDetector pd = new PushDetector();
     CollectManager cm = new CollectManager();
-    boolean pressed = true;
+    boolean pressed = false;
     int barValue = -1;
     int lastF = 1;
     Runnable finishHandler;
@@ -142,13 +135,13 @@ class Device {
 
     void finish() {
         hw.finish();
-        print("Finish: ");
+        // print("Finish: ");
         // if(hw.isCircle())
         //     print("Circle ");
         // if(hw.isSquare())
         //     print("Square ");
-        int round = hw.calcRound();
-        print("Round="); print(round); println();
+        // int round = hw.calcRound();
+        // print("Round="); print(round); println();
         if(finishHandler != null)
             finishHandler.run();
     }
@@ -196,13 +189,17 @@ class Device {
                 }
             }
             if(str.startsWith("yrp")) {
-                float[] yrp = new float[3];  // rotate asix: z-x-y 
-                yrp[0] = Float.parseFloat(tokens[1]);
-                yrp[1] = Float.parseFloat(tokens[2]);
-                yrp[2] = Float.parseFloat(tokens[3]);
-                float ay = Float.parseFloat(tokens[4]);
-                PVector p = new PVector(yrp[0]*180.0f/PI, yrp[1]*180.0f/PI);
-                handlePos(p, ay);
+                try {
+                    float[] yrp = new float[3];  // rotate asix: z-x-y 
+                    yrp[0] = Float.parseFloat(tokens[1]);
+                    yrp[1] = Float.parseFloat(tokens[2]);
+                    yrp[2] = Float.parseFloat(tokens[3]);
+                    float ay = Float.parseFloat(tokens[4]);
+                    PVector p = new PVector(yrp[0]*180.0f/PI, yrp[1]*180.0f/PI);
+                    handlePos(p, ay);
+                } catch (Exception e) {
+                    println("Failed to parse yrp!");
+                }
                 // println("yrp:\t" + yrp[0]*180.0f/PI + "\t" + yrp[1]*180.0f/PI + "\t" + yrp[2]*180.0f/PI);
             }
             if(str.startsWith("ack")) {
@@ -220,6 +217,7 @@ interface IGame {
 class Game1 implements IGame {
     Device d1, d2;
     int hp1, hp2;
+    PImage bgp = loadImage(PATH + "/picture/background.jpeg");
 
     Game1(Device device1, Device device2)
     {
@@ -227,10 +225,12 @@ class Game1 implements IGame {
         hp1 = 10;
         hp2 = 10;
         this.d1 = device1;
+        // d1.setBar(9);
         this.d2 = device2;
         d1.finishHandler = new Runnable() {
             public void run() {
-                int round = d1.hw.calcRound();
+                // int round = d1.hw.calcRound();
+                int round = d1.hw.getAlphabet();
                 if(d1.barValue < round)
                     return;
                 d1.setBar(d1.barValue - round);
@@ -240,7 +240,8 @@ class Game1 implements IGame {
         };
         d2.finishHandler = new Runnable() {
             public void run() {
-                int round = d2.hw.calcRound();
+                // int round = d2.hw.calcRound();
+                int round = d2.hw.getAlphabet();                
                 if(d2.barValue < round)
                     return;
                 d2.setBar(d2.barValue - round);
@@ -251,18 +252,22 @@ class Game1 implements IGame {
     }
     void playSound(int round) {
         if(round == 1)
-            d1.sound.play("发射");
+            d1.sound.play("风声");
         else if(round == 2)
             d1.sound.play("光波");
         else if(round == 3)
             d1.sound.play("闪耀");
     }
     void draw() {
+        background(bgp);
+        
         // HP Bar
         noStroke();
         fill(255, 0, 0);
-        rect(-300, -160, hp1 * 10, 10);
-        rect(-300, -120, hp2 * 10, 10);
+        text("P1", -340, -140);
+        text("P2", -340, -100);
+        rect(-300, -160, hp1 * 20, 10);
+        rect(-300, -120, hp2 * 20, 10);
     }
 }
 
@@ -291,6 +296,18 @@ class Handwritting {
 
     List<Integer> corner_ids = new ArrayList<Integer>();
     final float CORNER_ANGLE = PI / 4; // 45 degree
+
+    int[][] alphabets = {
+        {UP, LEFT, DOWN, RIGHT, UP, -1},    // alpha
+        {DOWN, RIGHT, UP, LEFT, RIGHT, UP, LEFT, -1},    // beta
+        {UP, LEFT, DOWN, -1},           // gamma1
+        {RIGHT, UP, LEFT, DOWN, -1},    // gamma2
+        {UP, LEFT, DOWN, RIGHT, -1},    // gamma3
+        {RIGHT, UP, LEFT, DOWN, RIGHT, -1} // gamma4
+    };
+
+    final boolean DRAW_DEBUG = false;
+    final boolean DRAW_LINK = true;
 
     PVector pmin, pmax;
 
@@ -330,9 +347,15 @@ class Handwritting {
     }
     void draw() {
         stroke(255); noFill();
+        PVector last = null;
         for(PVector p: points) {
             point(p.x * scale, p.y * scale);
+            if(DRAW_LINK && last != null)
+                line(last.x * scale, last.y * scale, p.x * scale, p.y * scale);
+            last = p;
         }
+        if(!DRAW_DEBUG)
+            return;
         for(int i: dir_change_ids) {
             PVector p = points.get(i);
             draw_dir(p.x * scale, p.y * scale, dirs.get(i));
@@ -426,6 +449,28 @@ class Handwritting {
                 return false;
         // Test if there are 4 dirs
         return has4Dir();
+    }
+    boolean isAlphabet0(int k) {
+        for(int i=0; i < dir_change_ids.size(); ++i) {
+            if(dirs.get(dir_change_ids.get(i)) != alphabets[k][i])
+                return false;
+        }
+        return alphabets[k][dir_change_ids.size()] == -1;
+    }
+    int getAlphabet() { 
+        if(isAlphabet0(0))
+            return 1;
+        if(isAlphabet0(1))
+            return 2;
+        if(isAlphabet0(2) || isAlphabet0(3) || isAlphabet0(4) || isAlphabet0(5))
+            return 3;
+        return 0;
+    }
+    boolean isLastDirDown() {
+        if(dirs.size() == 0)
+            return false;
+        println(dirs.get(dirs.size() - 1));
+        return dirs.get(dirs.size() - 1) == UP;
     }
 }
 
@@ -524,8 +569,8 @@ class SoundPlayer {
     Map<String, SoundFile> files = new HashMap();
 
     SoundPlayer(ShowPoints parent) {
-        String soundPath = "/Users/wangrunji/Documents/Codes/Tsinghua/Grade3-2/Entertainment/Magic/sound";
-        files.put("发射", new SoundFile(parent, soundPath + "/发射发射.mp3"));
+        String soundPath = PATH + "/sound";
+        files.put("风声", new SoundFile(parent, soundPath + "/风声卷过.mp3"));
         files.put("光波", new SoundFile(parent, soundPath + "/发射光波.mp3"));
         files.put("闪耀", new SoundFile(parent, soundPath + "/闪耀.mp3"));
     }
