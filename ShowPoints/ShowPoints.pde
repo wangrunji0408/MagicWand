@@ -58,7 +58,7 @@ void setupSerial() {
     if(use1)
     try {
         device1 = new Device();
-        device1.port = new Serial(this, "/dev/cu.HC-05-DevB-1", 115200);
+        device1.port = new Serial(this, "/dev/cu.HC-05-DevB", 115200);
         device1.sound = sound;
         device1.init();
         println("Device1 OK");        
@@ -69,7 +69,7 @@ void setupSerial() {
     if(use2)
     try {
         device2 = new Device();
-        device2.port = new Serial(this, "/dev/cu.HC-05-DevB-2", 115200);
+        device2.port = new Serial(this, "/dev/cu.HC-05-DevB-1", 115200);
         device2.sound = sound;
         device2.init();
         println("Device2 OK"); 
@@ -89,7 +89,7 @@ void setup() {
     smooth();
     
     setupSerial();
-    game = new Game2(device1, device2);
+    game = new Game1(device1, device2);
 }
 
 void draw() {    
@@ -215,18 +215,21 @@ interface IGame {
 }
 
 // 任意时刻收集/攻击
+// 对方攻击3s内回击相同招数，两倍伤害
 class Game1 implements IGame {
     Device d1, d2;
     int hp1, hp2;
+    int last1, last2;
+    int lastTime1, lastTime2;
+    long startTime = System.currentTimeMillis() / 1000;    
     PImage bgp = loadImage(PATH + "/picture/background.jpeg");
 
     Game1(Device device1, Device device2)
     {
         assert(device1 != null && device2 != null);
-        hp1 = 10;
-        hp2 = 10;
+        hp1 = 20;
+        hp2 = 20;
         this.d1 = device1;
-        // d1.setBar(9);
         this.d2 = device2;
         d1.finishHandler = new Runnable() {
             public void run() {
@@ -236,7 +239,13 @@ class Game1 implements IGame {
                     return;
                 d1.setBar(d1.barValue - round);
                 playSound(round);
-                hp2 -= round;
+                if(getTimeS() - lastTime2 <= 3 && round == last2)
+                    hp2 -= 2 * round;
+                else
+                    hp2 -= round;
+
+                last1 = round;
+                lastTime1 = getTimeS();
             }
         };
         d2.finishHandler = new Runnable() {
@@ -247,7 +256,13 @@ class Game1 implements IGame {
                     return;
                 d2.setBar(d2.barValue - round);
                 playSound(round);
-                hp1 -= round;
+                if(getTimeS() - lastTime1 <= 3 && round == last1)
+                    hp1 -= 2 * round;
+                else
+                    hp1 -= round;
+
+                last2 = round;
+                lastTime2 = getTimeS();                
             }
         };
         d1.pushHandler = new Runnable() {
@@ -277,6 +292,9 @@ class Game1 implements IGame {
         else if(round == 3)
             d1.sound.play("闪耀");
     }
+    int getTimeS() {
+        return (int)(System.currentTimeMillis() / 1000 - startTime);
+    }
     void draw() {
         background(bgp);
         
@@ -302,8 +320,8 @@ class Game2 implements IGame {
     int score1, score2;
     long startTime = System.currentTimeMillis() / 1000;
     int stage = -1, lastStage = -1;
-    final int COLL_TIME = 10;
-    final int ROUND_TIME = 10;
+    final int COLL_TIME = 60;
+    final int ROUND_TIME = 8;
     PImage bgp = loadImage(PATH + "/picture/background.jpeg");
 
     Game2(Device device1, Device device2)
@@ -315,6 +333,7 @@ class Game2 implements IGame {
             public void run() {
                 if(d1.cm.canCollect()) {
                     d1.cm.collect();
+                    d1.setBar(d1.barValue + 1); 
                     total1 ++;
                     d1.sound.play("coin");
                 }
@@ -324,6 +343,7 @@ class Game2 implements IGame {
             public void run() {
                 if(d2.cm.canCollect()) {
                     d2.cm.collect();
+                    d2.setBar(d2.barValue + 1); 
                     total2 ++;
                     d2.sound.play("coin");
                 }
@@ -411,6 +431,10 @@ class Game2 implements IGame {
             // reset
             last1 = last2 = 0;
         }
+        if(stage != lastStage && stage <= 5 && stage >= 1)
+            d1.sound.play("round_begin");
+        if(stage != lastStage && stage == 6)
+            d1.sound.play("game_over");
         lastStage = stage;
     }
     void draw() {
@@ -418,18 +442,32 @@ class Game2 implements IGame {
         background(bgp);
         
         noStroke();
-        fill(255, 0, 0);
-        textSize(100);
+        fill(255);
         if(stage > 5) {
-            text("GameOver", 0, 0);
+            textSize(50);
+            if(score1 > score2)
+                text("Red Win", -100, 0);
+            if(score1 < score2)
+                text("Blue Win", -100, 0);
+            if(score1 == score2)
+                text("Tie", -100, 0);
         } else {
+            textSize(100);
             text(Integer.toString(getCountdown()), 0, 0);
+            textSize(50);
+            text("Round " + Integer.toString(stage), -100, -100);
+            
         }
         textSize(50);
+        fill(255, 0, 0);
         text(Integer.toString(score1), -200, 0);
+        fill(32, 114, 251);
         text(Integer.toString(score2), 200, 0);
-        text(countToStr(count1), -250, -100);
-        text(countToStr(count2), 150, -100);
+        textSize(30);
+        fill(255, 0, 0);
+        text(countToStr(count1), -300, -100);
+        fill(32, 114, 251);
+        text(countToStr(count2), 100, -100);
     }
 }
 
@@ -736,6 +774,8 @@ class SoundPlayer {
         files.put("光波", new SoundFile(parent, soundPath + "/发射光波.mp3"));
         files.put("闪耀", new SoundFile(parent, soundPath + "/闪耀.mp3"));
         files.put("coin", new SoundFile(parent, soundPath + "/coin.mp3"));
+        files.put("game_over", new SoundFile(parent, soundPath + "/game_over.mp3"));
+        files.put("round_begin", new SoundFile(parent, soundPath + "/world_clear.mp3"));
     }
 
     void play(String name) {
